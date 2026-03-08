@@ -7,3 +7,5 @@
 .externalNativeBuild
 .cxx
 **/build
+.tools
+.android-sdk
