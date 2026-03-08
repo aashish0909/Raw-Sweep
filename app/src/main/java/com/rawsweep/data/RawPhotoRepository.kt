@@ -3,7 +3,6 @@ package com.rawsweep.data
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.net.Uri
-import android.os.Build
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -64,20 +63,6 @@ class RawPhotoRepository(private val contentResolver: ContentResolver) {
         }
 
         photos
-    }
-
-    fun getDeleteRequest(uris: List<Uri>): android.app.PendingIntent? {
-        if (uris.isEmpty()) return null
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            MediaStore.createDeleteRequest(contentResolver, uris).let { intent ->
-                android.app.PendingIntent.getActivity(
-                    null, 0, intent,
-                    android.app.PendingIntent.FLAG_IMMUTABLE
-                )
-            }
-        } else {
-            null
-        }
     }
 
     suspend fun deletePhotosLegacy(uris: List<Uri>): Int = withContext(Dispatchers.IO) {

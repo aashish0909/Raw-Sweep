@@ -26,7 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.outlined.DeselectAll
+import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -131,7 +131,7 @@ fun GalleryScreen(
                         }) {
                             Icon(
                                 imageVector = if (state.selectedIds.size == state.photos.size)
-                                    Icons.Outlined.DeselectAll
+                                    Icons.Filled.Deselect
                                 else
                                     Icons.Default.SelectAll,
                                 contentDescription = if (state.selectedIds.size == state.photos.size)
