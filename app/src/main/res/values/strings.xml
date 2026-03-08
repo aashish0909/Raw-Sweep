@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Raw Sweep</string>
+    <string name="grant_permission">Grant media permission</string>
+    <string name="permission_explanation">Allow access to images so Raw Sweep can list and delete RAW photos.</string>
+    <string name="raw_photos_found">RAW photos: %1$d</string>
+    <string name="selected_count">%1$d selected</string>
+    <string name="delete_selected">Delete selected</string>
+    <string name="refresh">Refresh</string>
+    <string name="no_raw_photos">No RAW photos found</string>
+    <string name="close_preview">Close preview</string>
+    <string name="preview_title">Preview</string>
+    <string name="load_error">Unable to load RAW photos.</string>
+    <string name="permission_denied">Permission denied. Please grant media access.</string>
+</resources>
