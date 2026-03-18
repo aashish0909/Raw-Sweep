@@ -10,7 +10,6 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Toast
 
 class ShortsBlockerService : AccessibilityService() {
 
@@ -18,7 +17,7 @@ class ShortsBlockerService : AccessibilityService() {
         private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
         private const val BLOCK_COOLDOWN_MS = 2000L
         private const val SCAN_COOLDOWN_MS = 200L
-        private const val FULL_SCAN_COOLDOWN_MS = 1000L
+        private const val FULL_SCAN_COOLDOWN_MS = 800L
         private const val PREFS_NAME = "shorts_blocker"
         private const val KEY_BLOCKING_ENABLED = "blocking_enabled"
 
@@ -65,7 +64,7 @@ class ShortsBlockerService : AccessibilityService() {
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_CLICKED -> {
                 handleClick(event)
-                scheduleDelayed(300) { fullShortsCheck() }
+                scheduleDelayed(400) { fullShortsCheck() }
             }
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 val className = event.className?.toString()?.lowercase() ?: ""
@@ -74,9 +73,9 @@ class ShortsBlockerService : AccessibilityService() {
                 } else {
                     fullShortsCheck()
                 }
-                scheduleDelayed(300) { fullShortsCheck() }
-                scheduleDelayed(700) { fullShortsCheck() }
-                scheduleDelayed(1200) { fullShortsCheck() }
+                scheduleDelayed(400) { fullShortsCheck() }
+                scheduleDelayed(800) { fullShortsCheck() }
+                scheduleDelayed(1500) { fullShortsCheck() }
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 throttledCheck()
@@ -84,7 +83,7 @@ class ShortsBlockerService : AccessibilityService() {
         }
     }
 
-    // --- Click handling (no cooldown — every Shorts click is blocked) ---
+    // --- Click handling (no cooldown) ---
 
     private fun handleClick(event: AccessibilityEvent) {
         val node = event.source ?: return
@@ -121,7 +120,7 @@ class ShortsBlockerService : AccessibilityService() {
                 desc.equals("Shorts", ignoreCase = true)
     }
 
-    // --- Automatic detection (with cooldown to prevent loops) ---
+    // --- Automatic detection ---
 
     private fun scheduleDelayed(delayMs: Long, action: () -> Unit) {
         handler.postDelayed(action, delayMs)
@@ -142,7 +141,7 @@ class ShortsBlockerService : AccessibilityService() {
 
         if (now - lastFullScanTime > FULL_SCAN_COOLDOWN_MS) {
             lastFullScanTime = now
-            if (containsReelPlayer(root)) {
+            if (isShortsPlayer(root)) {
                 blockShortsAuto()
             }
         }
@@ -153,12 +152,12 @@ class ShortsBlockerService : AccessibilityService() {
         if (!isBlockingEnabled(this)) return
         val root = rootInActiveWindow ?: return
 
-        if (isShortsTabActive(root) || containsReelPlayer(root)) {
+        if (isShortsTabActive(root) || isShortsPlayer(root)) {
             blockShortsAuto()
         }
     }
 
-    // --- Shorts detection methods ---
+    // --- Detection: Shorts tab state ---
 
     @Suppress("DEPRECATION")
     private fun isShortsTabActive(root: AccessibilityNodeInfo): Boolean {
@@ -196,14 +195,20 @@ class ShortsBlockerService : AccessibilityService() {
         return homeNodes.any { it.isSelected && it.isClickable }
     }
 
+    // --- Detection: Shorts reel player (structural + view ID + class name) ---
+
+    @Suppress("DEPRECATION")
+    private fun isShortsPlayer(root: AccessibilityNodeInfo): Boolean {
+        return hasReelViewIds(root, 0) ||
+                hasReelClassName(root, 0) ||
+                hasRightSideActionButtons(root)
+    }
+
     /**
-     * Walks the accessibility tree looking for YouTube's Shorts reel player.
-     * The reel player uses views whose resource IDs contain "reel"
-     * (e.g. reel_recycler, reel_player_overlay). Shelf-related IDs
-     * (Shorts shelf on the home feed) are excluded to avoid false positives.
+     * Check view resource IDs for "reel" (YouTube's internal name for Shorts views).
      */
     @Suppress("DEPRECATION")
-    private fun containsReelPlayer(node: AccessibilityNodeInfo, depth: Int = 0): Boolean {
+    private fun hasReelViewIds(node: AccessibilityNodeInfo, depth: Int): Boolean {
         if (depth > 12) return false
 
         val viewId = node.viewIdResourceName
@@ -222,10 +227,105 @@ class ShortsBlockerService : AccessibilityService() {
 
         for (i in 0 until limit) {
             val child = node.getChild(i) ?: continue
-            if (containsReelPlayer(child, depth + 1)) return true
+            if (hasReelViewIds(child, depth + 1)) return true
         }
 
         return false
+    }
+
+    /**
+     * Check node class names for "reel" or "shorts" patterns.
+     */
+    @Suppress("DEPRECATION")
+    private fun hasReelClassName(node: AccessibilityNodeInfo, depth: Int): Boolean {
+        if (depth > 10) return false
+
+        val cls = node.className?.toString()?.lowercase() ?: ""
+        if (("reel" in cls || "shorts" in cls) && "android" !in cls) {
+            return true
+        }
+
+        val limit = when {
+            depth < 3 -> node.childCount.coerceAtMost(20)
+            depth < 6 -> node.childCount.coerceAtMost(10)
+            else -> node.childCount.coerceAtMost(5)
+        }
+
+        for (i in 0 until limit) {
+            val child = node.getChild(i) ?: continue
+            if (hasReelClassName(child, depth + 1)) return true
+        }
+
+        return false
+    }
+
+    /**
+     * Structural detection: the Shorts reel player has 4+ small clickable
+     * action buttons (like, dislike, comments, share, remix, sound) stacked
+     * vertically on the right side of the screen. No other YouTube screen
+     * has this layout.
+     */
+    @Suppress("DEPRECATION")
+    private fun hasRightSideActionButtons(root: AccessibilityNodeInfo): Boolean {
+        val screenWidth = resources.displayMetrics.widthPixels
+        val screenHeight = resources.displayMetrics.heightPixels
+        val rightZoneLeft = (screenWidth * 0.65).toInt()
+        val maxBtnWidth = (screenWidth * 0.25).toInt()
+        val maxBtnHeight = (screenHeight * 0.12).toInt()
+        val topBound = (screenHeight * 0.15).toInt()
+        val bottomBound = (screenHeight * 0.90).toInt()
+        val counter = intArrayOf(0)
+
+        countButtonsInRightZone(
+            root, rightZoneLeft, maxBtnWidth, maxBtnHeight,
+            topBound, bottomBound, 0, counter,
+        )
+
+        return counter[0] >= 4
+    }
+
+    @Suppress("DEPRECATION")
+    private fun countButtonsInRightZone(
+        node: AccessibilityNodeInfo,
+        rightZoneLeft: Int,
+        maxWidth: Int,
+        maxHeight: Int,
+        topBound: Int,
+        bottomBound: Int,
+        depth: Int,
+        counter: IntArray,
+    ) {
+        if (depth > 10 || counter[0] >= 4) return
+
+        if (node.isClickable && !node.isScrollable) {
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+
+            if (bounds.left >= rightZoneLeft &&
+                bounds.width() in 1..maxWidth &&
+                bounds.height() in 1..maxHeight &&
+                bounds.top >= topBound &&
+                bounds.bottom <= bottomBound
+            ) {
+                counter[0]++
+                if (counter[0] >= 4) return
+            }
+        }
+
+        val limit = when {
+            depth < 3 -> node.childCount.coerceAtMost(20)
+            depth < 6 -> node.childCount.coerceAtMost(12)
+            else -> node.childCount.coerceAtMost(6)
+        }
+
+        for (i in 0 until limit) {
+            if (counter[0] >= 4) return
+            val child = node.getChild(i) ?: continue
+            countButtonsInRightZone(
+                child, rightZoneLeft, maxWidth, maxHeight,
+                topBound, bottomBound, depth + 1, counter,
+            )
+        }
     }
 
     // --- Block actions ---
