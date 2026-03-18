@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
     ) { granted ->
         hasPermission = granted
         if (granted) {
-            viewModel.loadPhotosIfNeeded()
+            viewModel.loadPhotos()
         }
     }
 
@@ -79,9 +79,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         val newPermission = checkPermission()
+        if (!newPermission && hasPermission) {
+            viewModel.resetLoadState()
+        }
         if (newPermission && !hasPermission) {
             hasPermission = true
-            viewModel.loadPhotosIfNeeded()
+            viewModel.loadPhotos()
         }
         hasPermission = newPermission
     }
