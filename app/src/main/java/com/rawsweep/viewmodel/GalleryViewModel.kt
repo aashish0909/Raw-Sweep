@@ -42,7 +42,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun resetLoadState() {
+        initialLoadDone = false
+    }
+
     fun loadPhotos() {
+        initialLoadDone = true
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {

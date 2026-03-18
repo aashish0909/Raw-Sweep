@@ -79,6 +79,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         val newPermission = checkPermission()
+        if (!newPermission && hasPermission) {
+            viewModel.resetLoadState()
+        }
         if (newPermission && !hasPermission) {
             hasPermission = true
             viewModel.loadPhotos()
