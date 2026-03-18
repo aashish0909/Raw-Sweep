@@ -33,6 +33,14 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     val uiState: StateFlow<GalleryUiState> = _uiState.asStateFlow()
 
     private var allPhotos: List<RawPhoto> = emptyList()
+    private var initialLoadDone = false
+
+    fun loadPhotosIfNeeded() {
+        if (!initialLoadDone) {
+            initialLoadDone = true
+            loadPhotos()
+        }
+    }
 
     fun loadPhotos() {
         viewModelScope.launch {

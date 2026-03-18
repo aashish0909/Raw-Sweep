@@ -1,5 +1,6 @@
 package com.rawsweep.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,17 +18,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -51,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.rawsweep.ui.components.DeleteConfirmDialog
 import com.rawsweep.ui.components.EmptyState
@@ -62,12 +68,31 @@ import com.rawsweep.viewmodel.GalleryViewModel
 @Composable
 fun GalleryScreen(
     viewModel: GalleryViewModel,
+    hasPermission: Boolean,
+    onRequestPermission: () -> Unit,
     onPhotoClick: (photoId: Long) -> Unit,
     onDeleteRequest: () -> Unit,
+    onBack: () -> Unit,
 ) {
+    if (!hasPermission) {
+        PermissionRequestScreen(
+            onRequestPermission = onRequestPermission,
+            onBack = onBack,
+        )
+        return
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadPhotosIfNeeded()
+    }
+
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = state.isSelectionMode) {
+        viewModel.clearSelection()
+    }
 
     LaunchedEffect(state.snackbarMessage) {
         state.snackbarMessage?.let {
@@ -102,7 +127,7 @@ fun GalleryScreen(
                         )
                     } else {
                         Column {
-                            Text("Raw Sweep", fontWeight = FontWeight.Bold)
+                            Text("Raw Photos", fontWeight = FontWeight.Bold)
                             if (state.photos.isNotEmpty()) {
                                 Text(
                                     "${state.photos.size} RAW files · ${formatSize(state.totalRawSize)}",
@@ -117,6 +142,13 @@ fun GalleryScreen(
                     if (state.isSelectionMode) {
                         IconButton(onClick = { viewModel.clearSelection() }) {
                             Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                        }
+                    } else {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                            )
                         }
                     }
                 },
@@ -263,6 +295,62 @@ fun GalleryScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PermissionRequestScreen(
+    onRequestPermission: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Raw Photos", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.PhotoLibrary,
+                contentDescription = null,
+                modifier = Modifier.size(80.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "Photo Access Required",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "This tool needs access to your photos to find and manage RAW (DNG) files from your camera.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(onClick = onRequestPermission) {
+                Text("Grant Access")
             }
         }
     }
