@@ -5,25 +5,23 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 2x2 grid of rounded squares: represents a hub of tools -->
-
     <!-- Top-left -->
     <path
         android:pathData="M38,33 L46,33 Q51,33 51,38 L51,46 Q51,51 46,51 L38,51 Q33,51 33,46 L33,38 Q33,33 38,33 Z"
-        android:fillColor="#FFFFFF" />
+        android:fillColor="#000000" />
 
     <!-- Top-right -->
     <path
         android:pathData="M62,33 L70,33 Q75,33 75,38 L75,46 Q75,51 70,51 L62,51 Q57,51 57,46 L57,38 Q57,33 62,33 Z"
-        android:fillColor="#FFFFFF" />
+        android:fillColor="#000000" />
 
     <!-- Bottom-left -->
     <path
         android:pathData="M38,57 L46,57 Q51,57 51,62 L51,70 Q51,75 46,75 L38,75 Q33,75 33,70 L33,62 Q33,57 38,57 Z"
-        android:fillColor="#FFFFFF" />
+        android:fillColor="#000000" />
 
     <!-- Bottom-right -->
     <path
         android:pathData="M62,57 L70,57 Q75,57 75,62 L75,70 Q75,75 70,75 L62,75 Q57,75 57,70 L57,62 Q57,57 62,57 Z"
-        android:fillColor="#FFFFFF" />
+        android:fillColor="#000000" />
 </vector>
