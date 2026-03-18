@@ -9,12 +9,14 @@ import androidx.navigation.navArgument
 import com.rawsweep.ui.screens.GalleryScreen
 import com.rawsweep.ui.screens.HomeScreen
 import com.rawsweep.ui.screens.PreviewScreen
+import com.rawsweep.ui.screens.ShortsBlockerScreen
 import com.rawsweep.viewmodel.GalleryViewModel
 
 object Routes {
     const val HOME = "home"
     const val GALLERY = "gallery"
     const val PREVIEW = "preview/{photoId}"
+    const val SHORTS_BLOCKER = "shorts_blocker"
 
     fun preview(photoId: Long) = "preview/$photoId"
 }
@@ -35,6 +37,9 @@ fun AppNavGraph(
             HomeScreen(
                 onNavigateToRawPhotos = {
                     navController.navigate(Routes.GALLERY)
+                },
+                onNavigateToShortsBlocker = {
+                    navController.navigate(Routes.SHORTS_BLOCKER)
                 },
             )
         }
@@ -64,6 +69,12 @@ fun AppNavGraph(
                 initialPhotoId = photoId,
                 onBack = { navController.popBackStack() },
                 onDeleteRequest = onDeleteRequest,
+            )
+        }
+
+        composable(Routes.SHORTS_BLOCKER) {
+            ShortsBlockerScreen(
+                onBack = { navController.popBackStack() },
             )
         }
     }

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Toolbox</string>
+    <string name="shorts_blocker_label">Shorts Blocker</string>
+    <string name="shorts_blocker_service_description">Blocks YouTube Shorts by monitoring the YouTube app and automatically navigating away from Shorts content. This service only monitors the YouTube app and does not collect any data.</string>
 </resources>
