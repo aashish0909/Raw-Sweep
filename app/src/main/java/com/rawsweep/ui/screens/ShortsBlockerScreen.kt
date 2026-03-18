@@ -2,6 +2,7 @@ package com.rawsweep.ui.screens
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.PauseCircleOutline
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -25,7 +27,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -51,17 +55,22 @@ fun ShortsBlockerScreen(
 ) {
     val context = LocalContext.current
     var isServiceEnabled by remember { mutableStateOf(false) }
+    var isBlockingEnabled by remember { mutableStateOf(true) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isServiceEnabled = ShortsBlockerService.isServiceEnabled(context)
+                isBlockingEnabled = ShortsBlockerService.isBlockingEnabled(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    val isFullyActive = isServiceEnabled && isBlockingEnabled
+    val isPaused = isServiceEnabled && !isBlockingEnabled
 
     Scaffold(
         topBar = {
@@ -87,7 +96,44 @@ fun ShortsBlockerScreen(
         ) {
             Spacer(Modifier.height(4.dp))
 
-            StatusCard(isActive = isServiceEnabled)
+            StatusCard(isFullyActive = isFullyActive, isPaused = isPaused)
+
+            if (isServiceEnabled) {
+                Spacer(Modifier.height(16.dp))
+
+                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Block Shorts",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (isBlockingEnabled) "Shorts are being blocked"
+                                else "Blocking is paused",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Switch(
+                            checked = isBlockingEnabled,
+                            onCheckedChange = { enabled ->
+                                isBlockingEnabled = enabled
+                                ShortsBlockerService.setBlockingEnabled(context, enabled)
+                            },
+                        )
+                    }
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
 
@@ -125,11 +171,11 @@ fun ShortsBlockerScreen(
             Spacer(Modifier.height(8.dp))
             BulletItem("Shorts tab — tapping it immediately redirects you back")
             BulletItem("Shorts from search — opening a Short from search results is blocked")
-            BulletItem("Shorts from anywhere — Shorts opened from recommendations, links, or any other source are blocked")
+            BulletItem("Shorts from anywhere — Shorts opened from home feed, subscriptions, recommendations, or links are blocked")
 
             Spacer(Modifier.height(16.dp))
             Text(
-                "Shorts may still appear visually in search results and recommendations, but they cannot be opened while the blocker is active.",
+                "Shorts may still appear visually in feeds and search results, but they cannot be opened while blocking is active.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -140,54 +186,60 @@ fun ShortsBlockerScreen(
 }
 
 @Composable
-private fun StatusCard(isActive: Boolean) {
+private fun StatusCard(isFullyActive: Boolean, isPaused: Boolean) {
+    val containerColor = when {
+        isFullyActive -> MaterialTheme.colorScheme.primaryContainer
+        isPaused -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.errorContainer
+    }
+    val contentColor = when {
+        isFullyActive -> MaterialTheme.colorScheme.onPrimaryContainer
+        isPaused -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onErrorContainer
+    }
+    val icon = when {
+        isFullyActive -> Icons.Filled.CheckCircle
+        isPaused -> Icons.Outlined.PauseCircleOutline
+        else -> Icons.Outlined.ErrorOutline
+    }
+    val title = when {
+        isFullyActive -> "Active"
+        isPaused -> "Paused"
+        else -> "Not Active"
+    }
+    val subtitle = when {
+        isFullyActive -> "YouTube Shorts are being blocked"
+        isPaused -> "Toggle on to resume blocking"
+        else -> "Enable the accessibility service to start blocking"
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isActive)
-                MaterialTheme.colorScheme.primaryContainer
-            else
-                MaterialTheme.colorScheme.errorContainer,
-        ),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
     ) {
         Row(
             modifier = Modifier.padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = if (isActive)
-                    Icons.Filled.CheckCircle
-                else
-                    Icons.Outlined.ErrorOutline,
+                imageVector = icon,
                 contentDescription = null,
-                tint = if (isActive)
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                else
-                    MaterialTheme.colorScheme.onErrorContainer,
+                tint = contentColor,
                 modifier = Modifier.size(32.dp),
             )
             Spacer(Modifier.width(16.dp))
             Column {
                 Text(
-                    if (isActive) "Active" else "Not Active",
+                    title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isActive)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onErrorContainer,
+                    color = contentColor,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    if (isActive)
-                        "YouTube Shorts are being blocked"
-                    else
-                        "Enable the accessibility service to start blocking",
+                    subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isActive)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onErrorContainer,
+                    color = contentColor,
                 )
             }
         }
