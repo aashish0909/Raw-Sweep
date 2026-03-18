@@ -18,6 +18,7 @@ class ShortsBlockerService : AccessibilityService() {
         private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
         private const val BLOCK_COOLDOWN_MS = 2000L
         private const val SCAN_COOLDOWN_MS = 200L
+        private const val FULL_SCAN_COOLDOWN_MS = 1000L
         private const val PREFS_NAME = "shorts_blocker"
         private const val KEY_BLOCKING_ENABLED = "blocking_enabled"
 
@@ -54,6 +55,7 @@ class ShortsBlockerService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastAutoBlockTime = 0L
     private var lastScanTime = 0L
+    private var lastFullScanTime = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -63,17 +65,26 @@ class ShortsBlockerService : AccessibilityService() {
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_CLICKED -> {
                 handleClick(event)
-                scheduleDelayedChecks(300)
+                scheduleDelayed(300) { fullShortsCheck() }
             }
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                checkForShorts()
-                scheduleDelayedChecks(300, 700, 1200)
+                val className = event.className?.toString()?.lowercase() ?: ""
+                if ("reel" in className || "shorts" in className) {
+                    blockShortsAuto()
+                } else {
+                    fullShortsCheck()
+                }
+                scheduleDelayed(300) { fullShortsCheck() }
+                scheduleDelayed(700) { fullShortsCheck() }
+                scheduleDelayed(1200) { fullShortsCheck() }
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 throttledCheck()
             }
         }
     }
+
+    // --- Click handling (no cooldown — every Shorts click is blocked) ---
 
     private fun handleClick(event: AccessibilityEvent) {
         val node = event.source ?: return
@@ -83,7 +94,6 @@ class ShortsBlockerService : AccessibilityService() {
             return
         }
 
-        // Walk up the parent chain — click might land on the icon inside the tab
         var current = node.parent
         var depth = 0
         while (current != null && depth < 4) {
@@ -95,7 +105,6 @@ class ShortsBlockerService : AccessibilityService() {
             depth++
         }
 
-        // Check immediate children — click might land on a container wrapping the label
         for (i in 0 until node.childCount.coerceAtMost(5)) {
             val child = node.getChild(i) ?: continue
             if (isShortsText(child)) {
@@ -112,58 +121,66 @@ class ShortsBlockerService : AccessibilityService() {
                 desc.equals("Shorts", ignoreCase = true)
     }
 
-    private fun scheduleDelayedChecks(vararg delaysMs: Long) {
-        for (delay in delaysMs) {
-            handler.postDelayed({ checkForShorts() }, delay)
-        }
+    // --- Automatic detection (with cooldown to prevent loops) ---
+
+    private fun scheduleDelayed(delayMs: Long, action: () -> Unit) {
+        handler.postDelayed(action, delayMs)
     }
 
     private fun throttledCheck() {
         val now = System.currentTimeMillis()
         if (now - lastScanTime < SCAN_COOLDOWN_MS) return
         lastScanTime = now
-        checkForShorts()
-    }
 
-    @Suppress("DEPRECATION")
-    private fun checkForShorts() {
         if (!isBlockingEnabled(this)) return
         val root = rootInActiveWindow ?: return
-        if (isShortsActive(root)) {
+
+        if (isShortsTabActive(root)) {
             blockShortsAuto()
+            return
+        }
+
+        if (now - lastFullScanTime > FULL_SCAN_COOLDOWN_MS) {
+            lastFullScanTime = now
+            if (containsReelPlayer(root)) {
+                blockShortsAuto()
+            }
         }
     }
 
     @Suppress("DEPRECATION")
-    private fun isShortsActive(root: AccessibilityNodeInfo): Boolean {
+    private fun fullShortsCheck() {
+        if (!isBlockingEnabled(this)) return
+        val root = rootInActiveWindow ?: return
+
+        if (isShortsTabActive(root) || containsReelPlayer(root)) {
+            blockShortsAuto()
+        }
+    }
+
+    // --- Shorts detection methods ---
+
+    @Suppress("DEPRECATION")
+    private fun isShortsTabActive(root: AccessibilityNodeInfo): Boolean {
         val shortsNodes = root.findAccessibilityNodeInfosByText("Shorts")
         if (shortsNodes.isEmpty()) return false
 
         val screenHeight = resources.displayMetrics.heightPixels
 
         for (node in shortsNodes) {
-            // Detection 1: Shorts tab is selected
             if (node.isSelected && (node.isClickable || node.isFocusable)) {
                 return true
             }
-
-            // Detection 2: Shorts tab is "checked" (some YouTube versions)
             if (node.isChecked && node.isClickable) {
                 return true
             }
 
-            // Detection 3: Shorts player indicator in the upper part of the screen.
-            // When a Short opens from a feed, YouTube may show a "Shorts" badge/label
-            // near the top that is NOT the bottom navigation tab.
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
             val isInUpperHalf = bounds.centerY() < screenHeight * 0.5
             val isBottomNavTab = bounds.top > screenHeight * 0.8 && node.isClickable
 
             if (isInUpperHalf && !isBottomNavTab && isShortsText(node)) {
-                // Verify this isn't a "Shorts" shelf header on the home feed
-                // by checking whether the Home tab is currently selected.
-                // If Home tab is selected, this is likely the shelf header — skip.
                 if (!isHomeTabSelected(root)) {
                     return true
                 }
@@ -178,6 +195,40 @@ class ShortsBlockerService : AccessibilityService() {
         val homeNodes = root.findAccessibilityNodeInfosByText("Home")
         return homeNodes.any { it.isSelected && it.isClickable }
     }
+
+    /**
+     * Walks the accessibility tree looking for YouTube's Shorts reel player.
+     * The reel player uses views whose resource IDs contain "reel"
+     * (e.g. reel_recycler, reel_player_overlay). Shelf-related IDs
+     * (Shorts shelf on the home feed) are excluded to avoid false positives.
+     */
+    @Suppress("DEPRECATION")
+    private fun containsReelPlayer(node: AccessibilityNodeInfo, depth: Int = 0): Boolean {
+        if (depth > 12) return false
+
+        val viewId = node.viewIdResourceName
+        if (viewId != null) {
+            val lower = viewId.lowercase()
+            if ("reel" in lower && "shelf" !in lower && "header" !in lower) {
+                return true
+            }
+        }
+
+        val limit = when {
+            depth < 3 -> node.childCount.coerceAtMost(20)
+            depth < 6 -> node.childCount.coerceAtMost(12)
+            else -> node.childCount.coerceAtMost(6)
+        }
+
+        for (i in 0 until limit) {
+            val child = node.getChild(i) ?: continue
+            if (containsReelPlayer(child, depth + 1)) return true
+        }
+
+        return false
+    }
+
+    // --- Block actions ---
 
     private fun blockShortsFromClick() {
         handler.removeCallbacksAndMessages(null)
