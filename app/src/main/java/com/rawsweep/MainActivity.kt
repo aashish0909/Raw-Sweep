@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
     ) { granted ->
         hasPermission = granted
         if (granted) {
-            viewModel.loadPhotos()
+            viewModel.loadPhotosIfNeeded()
         }
     }
 
@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
         val newPermission = checkPermission()
         if (newPermission && !hasPermission) {
             hasPermission = true
-            viewModel.loadPhotos()
+            viewModel.loadPhotosIfNeeded()
         }
         hasPermission = newPermission
     }
