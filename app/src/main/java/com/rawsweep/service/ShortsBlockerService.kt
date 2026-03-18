@@ -52,7 +52,7 @@ class ShortsBlockerService : AccessibilityService() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private var lastBlockTime = 0L
+    private var lastAutoBlockTime = 0L
     private var lastScanTime = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -79,7 +79,7 @@ class ShortsBlockerService : AccessibilityService() {
         val node = event.source ?: return
 
         if (isShortsText(node)) {
-            blockShorts()
+            blockShortsFromClick()
             return
         }
 
@@ -88,7 +88,7 @@ class ShortsBlockerService : AccessibilityService() {
         var depth = 0
         while (current != null && depth < 4) {
             if (isShortsText(current)) {
-                blockShorts()
+                blockShortsFromClick()
                 return
             }
             current = current.parent
@@ -99,7 +99,7 @@ class ShortsBlockerService : AccessibilityService() {
         for (i in 0 until node.childCount.coerceAtMost(5)) {
             val child = node.getChild(i) ?: continue
             if (isShortsText(child)) {
-                blockShorts()
+                blockShortsFromClick()
                 return
             }
         }
@@ -130,7 +130,7 @@ class ShortsBlockerService : AccessibilityService() {
         if (!isBlockingEnabled(this)) return
         val root = rootInActiveWindow ?: return
         if (isShortsActive(root)) {
-            blockShorts()
+            blockShortsAuto()
         }
     }
 
@@ -179,14 +179,19 @@ class ShortsBlockerService : AccessibilityService() {
         return homeNodes.any { it.isSelected && it.isClickable }
     }
 
-    private fun blockShorts() {
+    private fun blockShortsFromClick() {
+        handler.removeCallbacksAndMessages(null)
+        lastAutoBlockTime = System.currentTimeMillis()
+        performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
+    private fun blockShortsAuto() {
         val now = System.currentTimeMillis()
-        if (now - lastBlockTime < BLOCK_COOLDOWN_MS) return
-        lastBlockTime = now
+        if (now - lastAutoBlockTime < BLOCK_COOLDOWN_MS) return
+        lastAutoBlockTime = now
 
         handler.removeCallbacksAndMessages(null)
         performGlobalAction(GLOBAL_ACTION_BACK)
-        Toast.makeText(this, "Shorts blocked", Toast.LENGTH_SHORT).show()
     }
 
     override fun onInterrupt() {}
