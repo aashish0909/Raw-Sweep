@@ -126,6 +126,7 @@ class ShortsBlockerService : AccessibilityService() {
         handler.postDelayed(action, delayMs)
     }
 
+    @Suppress("DEPRECATION")
     private fun throttledCheck() {
         val now = System.currentTimeMillis()
         if (now - lastScanTime < SCAN_COOLDOWN_MS) return
@@ -134,14 +135,16 @@ class ShortsBlockerService : AccessibilityService() {
         if (!isBlockingEnabled(this)) return
         val root = rootInActiveWindow ?: return
 
-        if (isShortsTabActive(root)) {
+        // Fast checks (no tree traversal)
+        if (isShortsTabActive(root) || hasRemixButton(root)) {
             blockShortsAuto()
             return
         }
 
+        // Expensive checks (tree traversal) run less frequently
         if (now - lastFullScanTime > FULL_SCAN_COOLDOWN_MS) {
             lastFullScanTime = now
-            if (isShortsPlayer(root)) {
+            if (hasReelViewIds(root, 0) || hasReelClassName(root, 0) || hasRightSideActionButtons(root)) {
                 blockShortsAuto()
             }
         }
@@ -195,13 +198,43 @@ class ShortsBlockerService : AccessibilityService() {
         return homeNodes.any { it.isSelected && it.isClickable }
     }
 
-    // --- Detection: Shorts reel player (structural + view ID + class name) ---
+    // --- Detection: Shorts reel player ---
 
     @Suppress("DEPRECATION")
     private fun isShortsPlayer(root: AccessibilityNodeInfo): Boolean {
-        return hasReelViewIds(root, 0) ||
+        // Cheapest and most reliable check first: the Remix button
+        // is unique to Shorts and doesn't exist on regular videos.
+        return hasRemixButton(root) ||
+                hasReelViewIds(root, 0) ||
                 hasReelClassName(root, 0) ||
                 hasRightSideActionButtons(root)
+    }
+
+    /**
+     * The Remix button (offering "Use this sound", "Collab", "Green Screen", etc.)
+     * only exists in the Shorts player. A clickable node with text/description
+     * "Remix" that is button-sized is a definitive Shorts signal.
+     */
+    @Suppress("DEPRECATION")
+    private fun hasRemixButton(root: AccessibilityNodeInfo): Boolean {
+        val nodes = root.findAccessibilityNodeInfosByText("Remix")
+        if (nodes.isEmpty()) return false
+
+        val screenWidth = resources.displayMetrics.widthPixels
+
+        return nodes.any { node ->
+            if (!node.isClickable) return@any false
+
+            val text = node.text?.toString()?.trim() ?: ""
+            val desc = node.contentDescription?.toString()?.trim() ?: ""
+            val isRemixLabel = text.equals("Remix", ignoreCase = true) ||
+                    desc.contains("Remix", ignoreCase = true)
+            if (!isRemixLabel) return@any false
+
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            bounds.width() < screenWidth * 0.4
+        }
     }
 
     /**
