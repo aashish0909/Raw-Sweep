@@ -27,7 +27,7 @@ fun AppNavGraph(
     viewModel: GalleryViewModel,
     hasPermission: Boolean,
     onRequestPermission: () -> Unit,
-    onDeleteRequest: () -> Unit,
+    onDeleteRequest: (Boolean) -> Unit,
 ) {
     NavHost(
         navController = navController,
@@ -68,7 +68,7 @@ fun AppNavGraph(
                 viewModel = viewModel,
                 initialPhotoId = photoId,
                 onBack = { navController.popBackStack() },
-                onDeleteRequest = onDeleteRequest,
+                onDeleteRequest = { onDeleteRequest(true) },
             )
         }
 

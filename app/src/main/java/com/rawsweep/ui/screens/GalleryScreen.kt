@@ -71,7 +71,7 @@ fun GalleryScreen(
     hasPermission: Boolean,
     onRequestPermission: () -> Unit,
     onPhotoClick: (photoId: Long) -> Unit,
-    onDeleteRequest: () -> Unit,
+    onDeleteRequest: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     if (!hasPermission) {
@@ -89,6 +89,7 @@ fun GalleryScreen(
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var alsoDeleteFromGooglePhotos by remember { mutableStateOf(true) }
 
     BackHandler(enabled = state.isSelectionMode) {
         viewModel.clearSelection()
@@ -107,9 +108,11 @@ fun GalleryScreen(
         DeleteConfirmDialog(
             count = state.selectedIds.size,
             formattedSize = formattedSize,
+            alsoDeleteFromGooglePhotos = alsoDeleteFromGooglePhotos,
+            onAlsoDeleteFromGooglePhotosChange = { alsoDeleteFromGooglePhotos = it },
             onConfirm = {
                 showDeleteDialog = false
-                onDeleteRequest()
+                onDeleteRequest(alsoDeleteFromGooglePhotos)
             },
             onDismiss = { showDeleteDialog = false },
         )

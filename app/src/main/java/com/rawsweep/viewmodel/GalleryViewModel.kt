@@ -2,8 +2,6 @@ package com.rawsweep.viewmodel
 
 import android.app.Application
 import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rawsweep.data.RawPhoto
@@ -22,7 +20,6 @@ data class GalleryUiState(
     val isSelectionMode: Boolean = false,
     val sortOption: SortOption = SortOption.DATE_NEWEST,
     val totalRawSize: Long = 0L,
-    val deleteRequestUris: List<Uri>? = null,
     val snackbarMessage: String? = null,
 )
 
@@ -111,7 +108,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun requestDeleteSelected() {
+    fun requestDeleteSelected(onComplete: (Int) -> Unit = {}) {
         val state = _uiState.value
         val urisToDelete = state.photos
             .filter { state.selectedIds.contains(it.id) }
@@ -119,32 +116,14 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
         if (urisToDelete.isEmpty()) return
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            _uiState.update { it.copy(deleteRequestUris = urisToDelete) }
-        } else {
-            viewModelScope.launch {
-                val deleted = repository.deletePhotosLegacy(urisToDelete)
-                _uiState.update {
-                    it.copy(snackbarMessage = "Deleted $deleted photo(s)")
-                }
-                loadPhotos()
+        viewModelScope.launch {
+            val deleted = repository.deletePhotosLegacy(urisToDelete)
+            _uiState.update {
+                it.copy(snackbarMessage = "Deleted $deleted photo(s)")
             }
+            loadPhotos()
+            onComplete(deleted)
         }
-    }
-
-    fun createDeleteIntentSender(uris: List<Uri>): android.content.IntentSender? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val intent = MediaStore.createDeleteRequest(
-                getApplication<Application>().contentResolver,
-                uris
-            )
-            return intent.intentSender
-        }
-        return null
-    }
-
-    fun onDeleteRequestHandled() {
-        _uiState.update { it.copy(deleteRequestUris = null) }
     }
 
     fun onDeleteCompleted(deletedCount: Int) {
