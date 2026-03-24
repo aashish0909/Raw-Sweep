@@ -1,7 +1,11 @@
 package com.rawsweep
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -29,6 +33,9 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: GalleryViewModel by viewModels()
     private var hasPermission by mutableStateOf(false)
+    private var pendingDeleteCount: Int = 0
+    private var pendingDeletedFileNames: List<String> = emptyList()
+    private var pendingOpenGooglePhotosCleanup: Boolean = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -42,13 +49,15 @@ class MainActivity : ComponentActivity() {
     private val deleteLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        viewModel.onDeleteRequestHandled()
         if (result.resultCode == RESULT_OK) {
-            val count = viewModel.uiState.value.selectedIds.size
-            viewModel.onDeleteCompleted(count)
+            viewModel.onDeleteCompleted(pendingDeleteCount)
+            if (pendingOpenGooglePhotosCleanup && pendingDeleteCount > 0) {
+                openGooglePhotosForManualCleanup(pendingDeletedFileNames)
+            }
         } else {
             Toast.makeText(this, "Delete cancelled", Toast.LENGTH_SHORT).show()
         }
+        clearPendingDeleteContext()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,7 +78,9 @@ class MainActivity : ComponentActivity() {
                         viewModel = viewModel,
                         hasPermission = hasPermission,
                         onRequestPermission = { requestPermission() },
-                        onDeleteRequest = { handleDeleteRequest() },
+                        onDeleteRequest = { alsoDeleteFromGooglePhotos ->
+                            handleDeleteRequest(alsoDeleteFromGooglePhotos)
+                        },
                     )
                 }
             }
@@ -107,13 +118,16 @@ class MainActivity : ComponentActivity() {
         permissionLauncher.launch(permission)
     }
 
-    private fun handleDeleteRequest() {
+    private fun handleDeleteRequest(alsoDeleteFromGooglePhotos: Boolean) {
         val state = viewModel.uiState.value
-        val uris = state.photos
-            .filter { state.selectedIds.contains(it.id) }
-            .map { it.uri }
+        val selectedPhotos = state.photos.filter { state.selectedIds.contains(it.id) }
+        val uris = selectedPhotos.map { it.uri }
 
         if (uris.isEmpty()) return
+
+        pendingDeleteCount = uris.size
+        pendingDeletedFileNames = selectedPhotos.map { it.displayName }
+        pendingOpenGooglePhotosCleanup = alsoDeleteFromGooglePhotos
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
@@ -121,10 +135,54 @@ class MainActivity : ComponentActivity() {
                 val request = IntentSenderRequest.Builder(intent.intentSender).build()
                 deleteLauncher.launch(request)
             } catch (e: Exception) {
+                clearPendingDeleteContext()
                 Toast.makeText(this, "Failed to create delete request: ${e.message}", Toast.LENGTH_LONG).show()
             }
         } else {
-            viewModel.requestDeleteSelected()
+            viewModel.requestDeleteSelected { deleted ->
+                if (deleted > 0 && alsoDeleteFromGooglePhotos) {
+                    openGooglePhotosForManualCleanup(pendingDeletedFileNames)
+                }
+                clearPendingDeleteContext()
+            }
         }
+    }
+
+    private fun clearPendingDeleteContext() {
+        pendingDeleteCount = 0
+        pendingDeletedFileNames = emptyList()
+        pendingOpenGooglePhotosCleanup = false
+    }
+
+    private fun openGooglePhotosForManualCleanup(fileNames: List<String>) {
+        val dedupedNames = fileNames.distinct()
+        if (dedupedNames.isNotEmpty()) {
+            val clipboard = getSystemService(ClipboardManager::class.java)
+            val clipboardText = dedupedNames.joinToString(separator = "\n")
+            clipboard.setPrimaryClip(ClipData.newPlainText("Deleted RAW file names", clipboardText))
+        }
+
+        val launched = try {
+            val launchIntent = packageManager.getLaunchIntentForPackage("com.google.android.apps.photos")
+            if (launchIntent != null) {
+                startActivity(launchIntent)
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+
+        if (!launched) {
+            val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://photos.google.com"))
+            startActivity(fallbackIntent)
+        }
+
+        Toast.makeText(
+            this,
+            "Google Photos opened. Deleted RAW file names copied to clipboard. Search and delete cloud copies.",
+            Toast.LENGTH_LONG
+        ).show()
     }
 }
